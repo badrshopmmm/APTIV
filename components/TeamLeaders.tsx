@@ -28,7 +28,13 @@ import {
   Target,
   Sparkles,
   Upload,
-  Calendar
+  Calendar,
+  MessageCircle,
+  AlertTriangle,
+  ChevronDown,
+  Link as LinkIcon,
+  MessageSquare,
+  CheckCircle2
 } from 'lucide-react';
 import { TeamLeader, ProductionEntry } from '../types';
 import { editLeaderImage } from '../services/geminiService';
@@ -43,6 +49,10 @@ interface TeamLeadersProps {
 const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUpdate, onAddLeader }) => {
   const [editingLeader, setEditingLeader] = useState<TeamLeader | null>(null);
   const [isAddingLeader, setIsAddingLeader] = useState(false);
+  const [editingWAGroup, setEditingWAGroup] = useState<TeamLeader | null>(null);
+  const [waGroupLink, setWAGroupLink] = useState('');
+  const [waLinkError, setWALinkError] = useState(false);
+
   const [editFormData, setEditFormData] = useState<Partial<TeamLeader>>({});
   const [newLeaderForm, setNewLeaderForm] = useState<Partial<TeamLeader>>({
     name: '',
@@ -57,7 +67,7 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeView, setActiveView] = useState<'cards' | 'performance'>('cards');
-  const [performanceSortField, setPerformanceSortField] = useState<'name' | 'shifts' | 'efficiency' | 'rating'>('efficiency');
+  const [performanceSortField, setPerformanceSortField] = useState<'name' | 'shifts' | 'efficiency' | 'rating' | 'tasks'>('efficiency');
   const [performanceSortOrder, setPerformanceSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,7 +80,20 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
     reason: string;
     returnDate: string;
     type: 'on_leave' | 'stopped';
-  }>({ reason: 'Annual Leave', returnDate: '', type: 'on_leave' });
+    notifyWhatsApp: boolean;
+  }>({ reason: 'إجازة سنوية (Annual Leave)', returnDate: '', type: 'on_leave', notifyWhatsApp: true });
+
+  const stoppageReasons = [
+    "إجازة سنوية (Annual Leave)",
+    "إجازة مرضية (Sick Leave)",
+    "إجازة طارئة (Emergency Leave)",
+    "مهمة عمل خارج الموقع (Off-site Mission)",
+    "توقف إداري (Administrative Suspension)",
+    "إجراء تأديبي (Disciplinary Action)",
+    "دورة تدريبية (Training Course)",
+    "عطل فني في الوصول (Technical Delay)",
+    "أسباب أخرى (Other Reasons)"
+  ];
 
   // Auto-reactivation logic
   useEffect(() => {
@@ -91,16 +114,21 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
     return leaders.map(l => {
       const leaderReports = productionData.filter(p => p.leaderId === l.id);
       const totalShifts = leaderReports.length;
+      
+      // Calculate Tasks Completed: Reports where actual output met or exceeded target
+      const tasksCompleted = leaderReports.filter(p => p.totalOutput >= p.totalTarget && p.totalTarget > 0).length;
+      
       const avgEff = totalShifts > 0 
         ? Math.round(leaderReports.reduce((acc, curr) => acc + curr.efficiency, 0) / totalShifts) 
         : 0;
       
-      const baseRating = totalShifts > 0 ? (avgEff / 25) + (totalShifts / 50) : 0;
+      const baseRating = totalShifts > 0 ? (avgEff / 25) + (totalShifts / 50) + (tasksCompleted / 20) : 0;
       const finalRating = Math.min(Math.max(baseRating, 0), 5).toFixed(1);
 
       return {
         id: l.id,
         shiftsCompleted: totalShifts,
+        tasksCompleted,
         avgEfficiency: avgEff,
         rating: parseFloat(finalRating)
       };
@@ -121,6 +149,8 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
           return performanceSortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
         } else if (performanceSortField === 'shifts') {
           valA = metA.shiftsCompleted; valB = metB.shiftsCompleted;
+        } else if (performanceSortField === 'tasks') {
+          valA = metA.tasksCompleted; valB = metB.tasksCompleted;
         } else if (performanceSortField === 'efficiency') {
           valA = metA.avgEfficiency; valB = metB.avgEfficiency;
         } else {
@@ -143,6 +173,33 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
   const openEditModal = (leader: TeamLeader) => {
     setEditingLeader(leader);
     setEditFormData({ ...leader });
+  };
+
+  const openWAGroupModal = (leader: TeamLeader) => {
+    setEditingWAGroup(leader);
+    setWAGroupLink(leader.whatsappGroup || '');
+    setWALinkError(false);
+  };
+
+  const validateURL = (url: string) => {
+    if (!url) return true;
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleSaveWAGroup = () => {
+    if (!validateURL(waGroupLink)) {
+      setWALinkError(true);
+      return;
+    }
+    if (editingWAGroup) {
+      onUpdate({ ...editingWAGroup, whatsappGroup: waGroupLink });
+      setEditingWAGroup(null);
+    }
   };
 
   const handleSaveEdit = () => {
@@ -175,14 +232,30 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
   const handleStoppageSubmit = () => {
     const leaderToSuspend = leaders.find(l => l.id === isReportingStoppage);
     if (leaderToSuspend) {
-      onUpdate({
+      const updatedLeader: TeamLeader = {
         ...leaderToSuspend,
         status: stoppageForm.type,
         stoppageReason: stoppageForm.reason,
         returnDate: stoppageForm.returnDate
-      });
+      };
+      
+      onUpdate(updatedLeader);
+
+      if (stoppageForm.notifyWhatsApp) {
+        const typeLabel = stoppageForm.type === 'on_leave' ? 'إجازة' : 'إيقاف مؤقت';
+        const message = `*🔔 تنبيه عمليات: ${typeLabel} للمشرف*\n\n` +
+                        `👤 المشرف: ${leaderToSuspend.name}\n` +
+                        `📂 السبب: ${stoppageForm.reason}\n` +
+                        `📅 تاريخ العودة المتوقع: ${stoppageForm.returnDate || 'غير محدد'}\n` +
+                        `📍 الحالة الحالية: ${stoppageForm.type === 'on_leave' ? 'في إجازة' : 'متوقف عن العمل'}\n\n` +
+                        `_تم تحديث البيانات عبر نظام ProTrack AI_`;
+        
+        const groupLink = leaderToSuspend.whatsappGroup || `https://wa.me/?text=${encodeURIComponent(message)}`;
+        window.open(groupLink, '_blank');
+      }
+
       setIsReportingStoppage(null);
-      setStoppageForm({ reason: 'Annual Leave', returnDate: '', type: 'on_leave' });
+      setStoppageForm({ reason: stoppageReasons[0], returnDate: '', type: 'on_leave', notifyWhatsApp: true });
     }
   };
 
@@ -233,7 +306,7 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
     }
   };
 
-  const handleSort = (field: 'name' | 'shifts' | 'efficiency' | 'rating') => {
+  const handleSort = (field: 'name' | 'shifts' | 'efficiency' | 'rating' | 'tasks') => {
     if (performanceSortField === field) {
       setPerformanceSortOrder(performanceSortOrder === 'asc' ? 'desc' : 'asc');
     } else {
@@ -241,18 +314,6 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
       setPerformanceSortOrder('desc');
     }
   };
-
-  const stoppageReasons = [
-    "Annual Leave",
-    "Sick Leave",
-    "Parental Leave",
-    "Unpaid Leave",
-    "Administrative Suspension",
-    "Disciplinary Action",
-    "Training/Conference",
-    "Medical Emergency",
-    "Other"
-  ];
 
   return (
     <div className="space-y-12 pb-20 animate-in fade-in duration-700 font-['Inter']">
@@ -329,7 +390,10 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
                           Supervisor <ArrowUpDown size={12} className="inline ml-1" />
                        </th>
                        <th className="p-8 text-center cursor-pointer hover:text-orange-500 transition-colors" onClick={() => handleSort('shifts')}>
-                          Completed Shifts <ArrowUpDown size={12} className="inline ml-1" />
+                          Shifts <ArrowUpDown size={12} className="inline ml-1" />
+                       </th>
+                       <th className="p-8 text-center cursor-pointer hover:text-orange-500 transition-colors" onClick={() => handleSort('tasks')}>
+                          Tasks Completed <ArrowUpDown size={12} className="inline ml-1" />
                        </th>
                        <th className="p-8 text-center cursor-pointer hover:text-orange-500 transition-colors" onClick={() => handleSort('efficiency')}>
                           Avg. Efficiency <ArrowUpDown size={12} className="inline ml-1" />
@@ -368,6 +432,12 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
                                 </div>
                              </td>
                              <td className="p-8 text-center">
+                                <div className="inline-flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100">
+                                   <CheckCircle2 size={14} className="text-emerald-500" />
+                                   <span className="font-black text-emerald-600">{metrics.tasksCompleted}</span>
+                                </div>
+                             </td>
+                             <td className="p-8 text-center">
                                 <div className="w-full max-w-[120px] mx-auto space-y-2">
                                    <div className="flex justify-between items-center text-[9px] font-black uppercase">
                                       <span className={metrics.avgEfficiency >= 90 ? 'text-green-500' : 'text-orange-500'}>{metrics.avgEfficiency}%</span>
@@ -388,12 +458,21 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
                                 </div>
                              </td>
                              <td className="p-8 text-center">
-                                <button 
-                                  onClick={() => openEditModal(leader)}
-                                  className="p-3 bg-white border border-slate-100 text-slate-400 rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm"
-                                >
-                                   <Settings2 size={18} />
-                                </button>
+                                <div className="flex items-center justify-center gap-3">
+                                  <button 
+                                    onClick={() => openWAGroupModal(leader)}
+                                    className="p-3 bg-white border border-slate-100 text-emerald-500 rounded-xl hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
+                                    title="Edit WA Group Link"
+                                  >
+                                    <MessageSquare size={18} />
+                                  </button>
+                                  <button 
+                                    onClick={() => openEditModal(leader)}
+                                    className="p-3 bg-white border border-slate-100 text-slate-400 rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm"
+                                  >
+                                    <Settings2 size={18} />
+                                  </button>
+                                </div>
                              </td>
                           </tr>
                        );
@@ -410,9 +489,14 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
             return (
               <div key={leader.id} className="bg-white rounded-[3.5rem] border border-slate-100 shadow-sm flex flex-col overflow-hidden transition-all hover:shadow-2xl group/card relative">
                 <div className="p-10 pb-6 flex flex-col items-center text-center relative">
-                  <button onClick={() => openEditModal(leader)} className="absolute top-8 right-8 p-3 bg-slate-50 text-slate-400 rounded-2xl hover:bg-orange-500 hover:text-white transition-all opacity-0 group-hover/card:opacity-100 shadow-sm">
-                    <Edit2 size={16} />
-                  </button>
+                  <div className="absolute top-8 right-8 flex gap-2">
+                    <button onClick={() => openWAGroupModal(leader)} className="p-3 bg-emerald-50 text-emerald-500 rounded-2xl hover:bg-emerald-500 hover:text-white transition-all opacity-0 group-hover/card:opacity-100 shadow-sm" title="Edit WA Group Link">
+                      <MessageSquare size={16} />
+                    </button>
+                    <button onClick={() => openEditModal(leader)} className="p-3 bg-slate-50 text-slate-400 rounded-2xl hover:bg-orange-500 hover:text-white transition-all opacity-0 group-hover/card:opacity-100 shadow-sm">
+                      <Edit2 size={16} />
+                    </button>
+                  </div>
                   <div className="relative mb-6">
                     <div className={`w-32 h-32 rounded-full p-1 border-2 ${statusConfig.borderColor} relative shadow-xl overflow-hidden`}>
                       <img src={leader.imageUrl} alt={leader.name} className="w-full h-full object-cover rounded-full group-hover/card:scale-110 transition-all duration-500" />
@@ -426,6 +510,13 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
                   </div>
                   <h3 className="text-xl font-black text-slate-900 mb-1 uppercase tracking-tight">{leader.name}</h3>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{leader.role}</p>
+                  
+                  {/* Task Stat Badge */}
+                  <div className="mb-4 inline-flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-2xl border border-emerald-100 shadow-sm">
+                     <CheckCircle2 size={14} />
+                     <span className="text-[10px] font-black uppercase tracking-widest">{metrics.tasksCompleted} Tasks Completed</span>
+                  </div>
+
                   <div className="w-full grid grid-cols-3 gap-2 mt-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
                      <div className="flex flex-col items-center">
                         <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mb-1">Shifts</span>
@@ -445,6 +536,9 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
                   </div>
                 </div>
                 <div className="px-10 py-6 border-t border-slate-50 mt-auto flex flex-col gap-3">
+                   <button onClick={() => openWAGroupModal(leader)} className="w-full bg-emerald-50 text-emerald-600 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-500 hover:text-white transition-all flex items-center justify-center gap-3">
+                     <LinkIcon size={16} /> Edit WA Group Link
+                   </button>
                    <button onClick={() => openEditModal(leader)} className="w-full bg-slate-50 text-slate-600 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-500 hover:text-white transition-all flex items-center justify-center gap-3">
                      <Settings2 size={16} /> Edit Supervisor
                    </button>
@@ -464,70 +558,134 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
         </div>
       )}
 
+      {/* WhatsApp Group Link Modal */}
+      {editingWAGroup && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center p-8">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xl" onClick={() => setEditingWAGroup(null)}></div>
+           <div className="bg-white w-full max-w-lg rounded-[4rem] border border-slate-100 p-12 relative z-10 animate-in zoom-in-95 shadow-2xl">
+              <div className="flex justify-between items-center mb-10">
+                 <div className="flex items-center gap-4">
+                   <div className="p-3 bg-emerald-50 text-emerald-500 rounded-2xl">
+                     <MessageSquare size={24} />
+                   </div>
+                   <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">WhatsApp Group Link</h2>
+                 </div>
+                 <button onClick={() => setEditingWAGroup(null)} className="p-4 bg-slate-100 text-slate-400 rounded-3xl hover:text-red-500 transition-all"><X size={24} /></button>
+              </div>
+              <div className="space-y-6 text-right">
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Group URL (رابط المجموعة)</label>
+                    <input 
+                      className={`w-full bg-slate-50 border ${waLinkError ? 'border-red-500' : 'border-slate-200'} px-6 py-5 rounded-[1.5rem] outline-none font-bold focus:border-emerald-500 transition-all shadow-sm`}
+                      placeholder="https://chat.whatsapp.com/..."
+                      value={waGroupLink}
+                      onChange={(e) => { setWAGroupLink(e.target.value); setWALinkError(false); }}
+                    />
+                    {waLinkError && <p className="text-red-500 text-[9px] font-black uppercase tracking-widest mt-2 pl-4">Invalid URL format (يجب أن يكون رابطاً صحيحاً)</p>}
+                 </div>
+                 <div className="flex gap-4">
+                    <button onClick={() => setEditingWAGroup(null)} className="flex-1 bg-slate-100 text-slate-400 py-6 rounded-[2rem] font-black uppercase tracking-widest transition-all hover:bg-slate-200">Cancel</button>
+                    <button onClick={handleSaveWAGroup} className="flex-2 bg-emerald-500 text-white py-6 px-10 rounded-[2rem] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 transition-all hover:bg-emerald-600 active:scale-95">Save Changes</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
       {/* Stoppage Modal */}
       {isReportingStoppage && (
         <div className="fixed inset-0 z-[160] flex items-center justify-center p-8">
            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xl" onClick={() => setIsReportingStoppage(null)}></div>
-           <div className="bg-white w-full max-w-lg rounded-[4rem] border border-slate-100 p-12 relative z-10 animate-in zoom-in-95 shadow-2xl">
+           <div className="bg-white w-full max-w-lg rounded-[4rem] border border-slate-100 p-12 relative z-10 animate-in zoom-in-95 shadow-2xl overflow-y-auto max-h-[90vh]">
               <div className="flex justify-between items-center mb-10">
-                 <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Suspend Operations</h2>
+                 <div className="flex items-center gap-4">
+                   <div className="p-3 bg-red-50 text-red-500 rounded-2xl">
+                     <AlertTriangle size={24} />
+                   </div>
+                   <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Reporting Stoppage</h2>
+                 </div>
                  <button onClick={() => setIsReportingStoppage(null)} className="p-4 bg-slate-100 text-slate-400 rounded-3xl hover:text-red-500 transition-all"><X size={24} /></button>
               </div>
-              <div className="space-y-6">
-                 <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">Suspension Type</label>
+              
+              <div className="space-y-8">
+                 <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Suspension Category</label>
                     <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
                       <button 
                         onClick={() => setStoppageForm({...stoppageForm, type: 'on_leave'})}
-                        className={`flex-1 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${stoppageForm.type === 'on_leave' ? 'bg-white text-orange-600 shadow-md' : 'text-slate-400'}`}
+                        className={`flex-1 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${stoppageForm.type === 'on_leave' ? 'bg-white text-orange-600 shadow-md border border-orange-100' : 'text-slate-400 hover:text-slate-600'}`}
                       >
-                        Leave
+                        Leave / إجازة
                       </button>
                       <button 
                         onClick={() => setStoppageForm({...stoppageForm, type: 'stopped'})}
-                        className={`flex-1 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${stoppageForm.type === 'stopped' ? 'bg-white text-rose-600 shadow-md' : 'text-slate-400'}`}
+                        className={`flex-1 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${stoppageForm.type === 'stopped' ? 'bg-white text-rose-600 shadow-md border border-rose-100' : 'text-slate-400 hover:text-slate-600'}`}
                       >
-                        Suspended
+                        Suspended / إيقاف
                       </button>
                     </div>
                  </div>
                  
-                 <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">Reason for Stoppage</label>
-                    <select 
-                      className="w-full bg-slate-50 border border-slate-200 px-6 py-5 rounded-[1.5rem] outline-none font-bold appearance-none cursor-pointer focus:border-orange-500"
-                      value={stoppageForm.reason}
-                      onChange={(e) => setStoppageForm({...stoppageForm, reason: e.target.value})}
-                    >
-                      {stoppageReasons.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
+                 <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Specific Reason (السبب بالتفصيل)</label>
+                    <div className="relative">
+                      <select 
+                        className="w-full bg-slate-50 border border-slate-200 px-6 py-5 rounded-[1.5rem] outline-none font-bold appearance-none cursor-pointer focus:border-orange-500 shadow-sm"
+                        value={stoppageForm.reason}
+                        onChange={(e) => setStoppageForm({...stoppageForm, reason: e.target.value})}
+                      >
+                        {stoppageReasons.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                      <ChevronDown size={18} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    </div>
                  </div>
 
-                 <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">Expected Return Date</label>
+                 <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Expected Return Date (تاريخ العودة)</label>
                     <div className="relative">
-                      <Calendar size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+                      <Calendar size={20} className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
                       <input 
                         type="date"
-                        className="w-full bg-slate-50 border border-slate-200 pl-16 pr-6 py-5 rounded-[1.5rem] outline-none font-black text-slate-900 focus:border-orange-600"
+                        className="w-full bg-slate-50 border border-slate-200 pl-16 pr-6 py-5 rounded-[1.5rem] outline-none font-black text-slate-900 focus:border-orange-600 shadow-sm"
                         value={stoppageForm.returnDate}
+                        min={new Date().toISOString().split('T')[0]}
                         onChange={(e) => setStoppageForm({...stoppageForm, returnDate: e.target.value})}
                       />
                     </div>
-                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest pl-4 mt-2">Leader will automatically reactivate after this date.</p>
+                    <div className="flex items-start gap-2 pl-4 mt-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-orange-400 mt-1.5 shrink-0"></div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">System will automatically reactivate this supervisor at 00:00 on the selected date.</p>
+                    </div>
+                 </div>
+
+                 <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-center justify-between group cursor-pointer" onClick={() => setStoppageForm({...stoppageForm, notifyWhatsApp: !stoppageForm.notifyWhatsApp})}>
+                   <div className="flex items-center gap-4">
+                     <div className={`p-3 rounded-xl transition-all ${stoppageForm.notifyWhatsApp ? 'bg-green-500 text-white shadow-lg shadow-green-100' : 'bg-slate-200 text-slate-400'}`}>
+                       <MessageCircle size={20} />
+                     </div>
+                     <div>
+                       <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Broadcast via WhatsApp</p>
+                       <p className="text-[9px] font-bold text-slate-400 uppercase">Notify management group</p>
+                     </div>
+                   </div>
+                   <div className={`w-12 h-6 rounded-full transition-all relative ${stoppageForm.notifyWhatsApp ? 'bg-green-500' : 'bg-slate-300'}`}>
+                     <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${stoppageForm.notifyWhatsApp ? 'left-7' : 'left-1'}`}></div>
+                   </div>
                  </div>
 
                  <button 
                    onClick={handleStoppageSubmit} 
-                   className={`w-full py-6 rounded-[2rem] font-black uppercase tracking-widest shadow-2xl transition-all mt-4 ${stoppageForm.type === 'stopped' ? 'bg-rose-600 hover:bg-slate-900' : 'bg-orange-500 hover:bg-slate-900'} text-white`}
+                   className={`w-full py-6 rounded-[2.5rem] font-black uppercase tracking-widest shadow-2xl transition-all mt-4 flex items-center justify-center gap-4 ${stoppageForm.type === 'stopped' ? 'bg-rose-600 hover:bg-slate-900 shadow-rose-100' : 'bg-orange-500 hover:bg-slate-900 shadow-orange-100'} text-white`}
                  >
-                   Confirm Stoppage
+                   <PowerOff size={20} />
+                   <span>Confirm & Archive Stoppage</span>
                  </button>
               </div>
            </div>
         </div>
       )}
 
+      {/* Editing Modal */}
       {editingLeader && (
         <div className="fixed inset-0 z-[160] flex items-center justify-center p-8">
            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xl" onClick={() => setEditingLeader(null)}></div>
@@ -556,12 +714,12 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
                     <input className="w-full bg-slate-50 border border-slate-200 px-6 py-5 rounded-[1.5rem] outline-none font-black tracking-widest" value={editFormData.serialNumber} onChange={(e) => setEditFormData({...editFormData, serialNumber: e.target.value})} />
                  </div>
                  <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">Shift / Responsibility</label>
-                    <input className="w-full bg-slate-50 border border-slate-200 px-6 py-5 rounded-[1.5rem] outline-none font-bold" value={editFormData.role} onChange={(e) => setEditFormData({...editFormData, role: e.target.value})} />
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">WhatsApp Contact</label>
+                    <input className="w-full bg-slate-50 border border-slate-200 px-6 py-5 rounded-[1.5rem] outline-none font-black" placeholder="e.g. 201000000000" value={editFormData.whatsapp} onChange={(e) => setEditFormData({...editFormData, whatsapp: e.target.value})} />
                  </div>
                  <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">Photo URL (Manual Override)</label>
-                    <input className="w-full bg-slate-50 border border-slate-200 px-6 py-4 rounded-xl font-bold" value={editFormData.imageUrl} onChange={(e) => setEditFormData({...editFormData, imageUrl: e.target.value})} />
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">Shift / Responsibility</label>
+                    <input className="w-full bg-slate-50 border border-slate-200 px-6 py-5 rounded-[1.5rem] outline-none font-bold" value={editFormData.role} onChange={(e) => setEditFormData({...editFormData, role: e.target.value})} />
                  </div>
                  <button onClick={handleSaveEdit} className="w-full bg-slate-900 text-white py-6 rounded-[2rem] font-black uppercase tracking-widest shadow-2xl transition-all mt-4 hover:bg-orange-500">Update Profile</button>
               </div>
@@ -569,6 +727,7 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
         </div>
       )}
 
+      {/* Adding Modal */}
       {isAddingLeader && (
         <div className="fixed inset-0 z-[160] flex items-center justify-center p-8">
            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xl" onClick={() => setIsAddingLeader(false)}></div>
@@ -599,10 +758,6 @@ const TeamLeaders: React.FC<TeamLeadersProps> = ({ leaders, productionData, onUp
                  <div className="space-y-2">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">Shift / Responsibility</label>
                     <input className="w-full bg-slate-50 border border-slate-200 px-6 py-5 rounded-[1.5rem] outline-none font-bold" placeholder="e.g. Morning Shift" value={newLeaderForm.role} onChange={(e) => setNewLeaderForm({...newLeaderForm, role: e.target.value})} />
-                 </div>
-                 <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-4">Photo URL (Manual)</label>
-                    <input className="w-full bg-slate-50 border border-slate-200 px-6 py-4 rounded-xl font-bold" value={newLeaderForm.imageUrl} onChange={(e) => setNewLeaderForm({...newLeaderForm, imageUrl: e.target.value})} />
                  </div>
                  <button onClick={handleAddNewLeader} className="w-full bg-orange-500 text-white py-6 rounded-[2rem] font-black uppercase tracking-widest shadow-2xl transition-all mt-4">Confirm Addition</button>
               </div>

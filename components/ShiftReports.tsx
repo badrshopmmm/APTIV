@@ -34,6 +34,12 @@ const ShiftReports: React.FC<ShiftReportsProps> = ({ data, leaders, onAdd, onCle
     }
   };
 
+  const handleDeleteReportSafe = (id: string, date: string, line: string) => {
+    if (confirm(`Are you sure you want to delete the report for ${line} on ${date}? This action is irreversible.`)) {
+      onDeleteReport(id);
+    }
+  };
+
   const shareViaEmail = (report: ProductionEntry) => {
     const leader = leaders.find(l => l.id === report.leaderId);
     const subject = `Archived Production Report: ${report.lineId} - ${report.shift} - ${report.date}`;
@@ -147,7 +153,7 @@ const ShiftReports: React.FC<ShiftReportsProps> = ({ data, leaders, onAdd, onCle
                         <button onClick={() => shareViaEmail(report)} className="p-3 bg-white border border-slate-100 text-orange-500 rounded-xl hover:bg-orange-500 hover:text-white transition-all shadow-sm">
                           <Mail size={16} />
                         </button>
-                        <button onClick={() => onDeleteReport(report.id)} className="p-3 bg-white border border-slate-100 text-red-400 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm">
+                        <button onClick={() => handleDeleteReportSafe(report.id, report.date, report.lineId)} className="p-3 bg-white border border-slate-100 text-red-400 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm">
                           <Trash2 size={16} />
                         </button>
                       </div>

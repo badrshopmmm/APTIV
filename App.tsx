@@ -125,17 +125,19 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex overflow-hidden font-['Inter'] relative">
-      <aside className={`relative z-30 border-r border-slate-200 transition-all duration-500 bg-white ${isSidebarOpen ? 'w-80' : 'w-24'} flex flex-col shadow-xl`}>
-        <div className="p-10 flex items-center gap-5">
-          <div className="p-4 rounded-3xl bg-orange-600 shadow-lg shadow-orange-100 flex items-center justify-center">
-            <Zap size={28} className="text-white fill-white" />
-          </div>
-          {isSidebarOpen && (
-            <div>
-               <span className="font-black text-3xl tracking-tighter text-slate-900 block leading-none">APTIV</span>
-               <span className="text-orange-600 text-[9px] font-black uppercase tracking-[0.4em] mt-1 block leading-none">OPERATIONS</span>
+      <aside className={`fixed lg:relative inset-y-0 left-0 z-50 bg-white border-r border-slate-100 flex flex-col transition-all duration-500 no-print ${isSidebarOpen ? 'w-80 translate-x-0' : 'w-24 -translate-x-full lg:translate-x-0'}`}>
+        <div className="p-8 md:p-10 flex items-center justify-center">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-orange-600 rounded-2xl flex items-center justify-center shadow-xl shadow-orange-100 rotate-3">
+              <Cpu className="text-white md:w-7 md:h-7" size={24} />
             </div>
-          )}
+            {isSidebarOpen && (
+              <div className="flex flex-col">
+                <span className="text-xl md:text-2xl font-black text-slate-900 tracking-tighter leading-none">APTIV</span>
+                <span className="text-[8px] md:text-[10px] font-black text-orange-600 uppercase tracking-[0.3em]">Field Matrix</span>
+              </div>
+            )}
+          </div>
         </div>
         
         <nav className="flex-1 mt-10 px-6 space-y-4">
@@ -166,44 +168,44 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto custom-scrollbar relative z-10">
-        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-10 py-8 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-4 bg-slate-50 rounded-2xl text-slate-400 hover:text-orange-600 border border-slate-200">
-              <Radio size={22} />
+      <main className="flex-1 overflow-y-auto custom-scrollbar relative z-10 w-full">
+        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-4 md:px-10 py-4 md:py-8 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 md:gap-8">
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-3 md:p-4 bg-slate-50 rounded-xl md:rounded-2xl text-slate-400 hover:text-orange-600 border border-slate-200">
+              <Radio size={18} className="md:w-[22px] md:h-[22px]" />
             </button>
-            <div className="hidden sm:flex items-center gap-4 px-6 py-3 bg-slate-50 border border-slate-200 rounded-2xl">
-              <Shield size={16} className="text-orange-600" />
+            <div className="hidden sm:flex items-center gap-3 md:gap-4 px-4 md:px-6 py-2 md:py-3 bg-slate-50 border border-slate-200 rounded-xl md:rounded-2xl">
+              <Shield size={14} className="text-orange-600 md:w-4 md:h-4" />
               <div className="flex flex-col">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Current Supervisor</span>
-                <span className="text-xs font-black text-slate-900 tracking-tight">{currentUser.name}</span>
+                <span className="text-[7px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest">Supervisor</span>
+                <span className="text-[10px] md:text-xs font-black text-slate-900 tracking-tight truncate max-w-[100px] md:max-w-none">{currentUser.name}</span>
               </div>
             </div>
           </div>
 
-          <div className="flex-1 max-w-2xl mx-10">
-            <div className="bg-slate-50 border border-slate-200 rounded-[1.5rem] p-4 flex items-center gap-5 relative overflow-hidden">
-               <Megaphone size={18} className="text-orange-600" />
+          <div className="flex-1 max-w-2xl mx-2 md:mx-10">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl md:rounded-[1.5rem] p-2 md:p-4 flex items-center gap-3 md:gap-5 relative overflow-hidden">
+               <Megaphone size={14} className="text-orange-600 md:w-[18px] md:h-[18px]" />
                <div className="flex-1 overflow-hidden">
-                 <p className="whitespace-nowrap inline-block animate-marquee text-slate-600 font-bold text-xs tracking-wide uppercase">
+                 <p className="whitespace-nowrap inline-block animate-marquee text-slate-600 font-bold text-[10px] md:text-xs tracking-wide uppercase">
                    {announcement}
                  </p>
                </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-3 md:gap-5">
              <div className="text-right hidden xl:block">
                 <p className="text-slate-900 font-black text-sm tracking-tight">{director.name}</p>
                 <p className="text-orange-600 text-[9px] font-black uppercase tracking-[0.2em]">{director.role}</p>
              </div>
-             <div className="w-14 h-14 rounded-2xl border-2 border-slate-200 overflow-hidden shadow-md">
+             <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl border-2 border-slate-200 overflow-hidden shadow-md">
                <img src={director.imageUrl} className="w-full h-full object-cover" alt="Director" />
              </div>
           </div>
         </header>
 
-        <div className="p-12 max-w-[1600px] mx-auto">
+        <div className="p-4 md:p-12 max-w-[1600px] mx-auto">
           {activeTab === 'dashboard' && (
             <Dashboard 
               data={productionData} 
@@ -221,6 +223,7 @@ const App: React.FC = () => {
           {activeTab === 'shifts' && (
             <ShiftBoards 
               leaders={leaders}
+              productionData={productionData}
               onSaveReport={(report) => {
                 setProductionData(prev => [report, ...prev]);
               }}

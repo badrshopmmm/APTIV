@@ -35,14 +35,45 @@ export const editLeaderImage = async (base64Image: string, prompt: string): Prom
 };
 
 // Re-creating the instance right before the call to ensure the latest API key is utilized.
-export const analyzeProductionData = async (entries: any[]) => {
+export const analyzeProductionData = async (entries: any[], historicalData: any[] = []) => {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    // Extract downtime reasons from historical data
+    const historicalStoppages = historicalData
+      .filter(entry => entry.downtimeReason && entry.downtimeReason !== 'None')
+      .map(entry => entry.downtimeReason);
+    
+    // Extract notes from current entries that might indicate stoppages
+    const currentNotes = entries
+      .filter(h => h.note && h.note.trim() !== '')
+      .map(h => h.note);
+
+    const prompt = `
+      بصفتك خبير إنتاج في شركة APTIV، قم بتحليل بيانات الإنتاج الحالية وسجل التوقفات التاريخي.
+      
+      البيانات الحالية:
+      ${JSON.stringify(entries)}
+      
+      ملاحظات التوقف الحالية:
+      ${JSON.stringify(currentNotes)}
+      
+      سجل التوقفات التاريخي (Production Stoppage Log):
+      ${JSON.stringify(historicalStoppages)}
+      
+      المطلوب:
+      1. تحليل أداء الخط الحالي (الكفاءة، المرفوضات).
+      2. تحديد أسباب التوقف المتكررة بناءً على السجل التاريخي والملاحظات الحالية.
+      3. اقتراح تدابير وقائية (Preventative Measures) محددة وعملية لتجنب هذه التوقفات مستقبلاً وتحسين المردودية.
+      
+      قدم التقرير باللغة العربية بشكل مهني ومختصر.
+    `;
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `بصفتك خبير إنتاج، قم بتحليل البيانات التالية وقدم تقريراً مختصراً باللغة العربية حول المشاكل الرئيسية وكيفية تحسين المردودية: ${JSON.stringify(entries)}`,
+      contents: prompt,
     });
-    // Use the .text property on GenerateContentResponse directly as recommended.
+    
     return response.text;
   } catch (error) {
     console.error("Error analyzing production:", error);
